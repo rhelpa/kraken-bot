@@ -194,15 +194,25 @@ while True:
         )
 
         # ─── Estimates for all symbols ────────────────────────────────────
+        tradeable = []
         for sym in SYMBOLS:
-            price = fetch_price(sym)
-            stop  = price - atr(sym) * SL_ATR_MULT
-            qty   = pos_size(price, stop, cash)
-            cost  = qty * price
+            price    = fetch_price(sym)
+            minlot   = exchange.markets[sym]["limits"]["amount"]["min"] or 0
+            req_cash = minlot * price
+            ok       = (minlot > 0 and cash >= req_cash)
+            if ok:
+                tradeable.append(sym)
             logger.info(
-                "↗ Est next %-8s @ $%.2f: qty %.4f → total cost $%.2f (risk $%.2f)",
-                sym, price, qty, cost, ticket
+                "↗ %-8s price $%.2f | minlot %.4f (~$%.2f) %s",
+                sym,
+                price,
+                minlot,
+                req_cash,
+                "✅" if ok else "❌"
             )
+        logger.info("📊 Tradeable symbols (%d): %s",
+                    len(tradeable),
+                    ", ".join(tradeable) if tradeable else "none")
         # ─────────────────────────────────────────────────────────────────
 
         # book any fresh fills into CSV
