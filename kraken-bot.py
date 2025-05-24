@@ -48,32 +48,36 @@ logger.addHandler(ch)
 
 # ─── Exchange ───────────────────────────────────────────────────────────
 exchange = ccxt.kraken({
-    "apiKey":  API_KEY,
-    "secret":  API_SECRET,
-    "enableRateLimit": True
+    "apiKey":          API_KEY,
+    "secret":          API_SECRET,
+    "enableRateLimit": True,
+    "timeout":         60000,     # milliseconds
 })
 exchange.load_markets()
 
 # ─── Helpers ────────────────────────────────────────────────────────────
-def fetch_price(sym):   return float(exchange.fetch_ticker(sym)["last"])
+def fetch_price(sym):    return float(exchange.fetch_ticker(sym)["last"])
 def balance(asset="USD"): return float(exchange.fetch_balance()["free"].get(asset,0))
 
 def ema(sym, n=EMA_PERIOD):
-    closes=[c[4] for c in exchange.fetch_ohlcv(sym,"1h",limit=n)]
-    k,e=2/(n+1),closes[0]
-    for p in closes[1:]: e = p*k+e*(1-k)
+    closes = [c[4] for c in exchange.fetch_ohlcv(sym, "1h", limit=n)]
+    k, e = 2/(n+1), closes[0]
+    for p in closes[1:]:
+        e = p*k + e*(1-k)
     return e
 
 def atr(sym, n=ATR_PERIOD):
-    ohlc=exchange.fetch_ohlcv(sym,"1m",limit=n+1)
-    trs=[max(h-l,abs(h-cp),abs(l-cp))
-         for (_,_,h,l,_,_),(_,_,_,_,cp,_) in zip(ohlc[1:],ohlc)]
+    ohlc = exchange.fetch_ohlcv(sym, "1m", limit=n+1)
+    trs = [
+        max(h-l, abs(h-cp), abs(l-cp))
+        for (_,_,h,l,_,_), (_,_,_,_,cp,_) in zip(ohlc[1:], ohlc)
+    ]
     return sum(trs)/len(trs) if trs else 0
 
 def pos_size(entry, stop, bal):
     risk = bal * RISK_FRAC
-    unit = abs(entry-stop)
-    return 0 if unit == 0 else risk/unit
+    unit = abs(entry - stop)
+    return 0 if unit == 0 else risk / unit
 
 # ─── Trade-history utilities ────────────────────────────────────────────
 def fetch_all_trades(sym, max_pages=20):
@@ -111,7 +115,8 @@ def open_position_from_history(sym):
 # ─── CSV ledger ─────────────────────────────────────────────────────────
 def append_new_trades(last_id=None):
     recent = exchange.fetch_my_trades(limit=50)
-    if not recent: return last_id
+    if not recent:
+        return last_id
     recent.sort(key=lambda t: t["id"])
     with TRADE_CSV.open("a", newline="") as f:
         w = csv.writer(f)
@@ -120,88 +125,100 @@ def append_new_trades(last_id=None):
         for t in recent:
             if last_id is not None and t["id"] <= last_id:
                 continue
-            w.writerow([t["id"], t["datetime"], t["symbol"], t["side"],
-                        t["amount"], t["price"], t["cost"],
-                        t["fee"]["cost"], t["order"]])
+            w.writerow([
+                t["id"], t["datetime"], t["symbol"], t["side"],
+                t["amount"], t["price"], t["cost"],
+                t["fee"]["cost"], t["order"]
+            ])
     return recent[-1]["id"]
 
 # ─── Adopt wallet exposure ───────────────────────────────────────────────
 wallet_bal = exchange.fetch_balance()
 positions  = {}
 for sym in SYMBOLS:
-    base = sym.split("/")[0]
-    held = float(wallet_bal["total"].get(base, 0))
+    base    = sym.split("/")[0]
+    held    = float(wallet_bal["total"].get(base, 0))
     usd_val = held * fetch_price(sym)
     if usd_val >= MIN_USD_EXPOS:
         qty, entry = open_position_from_history(sym)
         if qty > 0:
             a = atr(sym) or entry*0.01
             positions[sym] = {
-                "entry": entry,
+                "entry":  entry,
                 "amount": qty,
-                "sl": entry - a*SL_ATR_MULT,
-                "tp": entry + a*TP_ATR_MULT
+                "sl":     entry - a*SL_ATR_MULT,
+                "tp":     entry + a*TP_ATR_MULT
             }
-            logger.info("↻ Adopted %s %.6f @ %.4f  (TP %.4f  SL %.4f)",
-                        sym, qty, entry,
-                        entry + a*TP_ATR_MULT,
-                        entry - a*SL_ATR_MULT)
+            logger.info(
+                "↻ Adopted %s %.6f @ %.4f  (TP %.4f  SL %.4f)",
+                sym, qty, entry,
+                entry + a*TP_ATR_MULT,
+                entry - a*SL_ATR_MULT
+            )
         else:
             positions[sym] = None
     else:
         positions[sym] = None
 
-last_price = {s: fetch_price(s) for s in SYMBOLS}
+last_price    = {s: fetch_price(s) for s in SYMBOLS}
 last_trade_id = append_new_trades(None)
 
 # ─── Main loop ──────────────────────────────────────────────────────────
-logger.info("▶ bot online – risk %.2f%%/trade, max %d open",
-            RISK_FRAC*100, MAX_OPEN)
+logger.info(
+    "▶ bot online – risk %.2f%%/trade, max %d open",
+    RISK_FRAC*100, MAX_OPEN
+)
 
 while True:
     try:
-        ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-        cash = balance()
-        equity = cash + sum(
+        ts      = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        cash    = balance()
+        equity  = cash + sum(
             p["amount"] * fetch_price(s)
             for s,p in positions.items() if p
         )
-        open_n = sum(1 for p in positions.values() if p)
+        open_n  = sum(1 for p in positions.values() if p)
 
         # compute ticket size and unrealized P/L
-        ticket = cash * RISK_FRAC
+        ticket     = cash * RISK_FRAC
         unreal_pnl = sum(
             p["amount"] * (fetch_price(s) - p["entry"])
             for s,p in positions.items() if p
         )
 
-        logger.info("♥ %s | Cash $%.2f | Equity $%.2f | Open %d | "
-                    "Ticket $%.2f | UnrealPnL $%.2f",
-                    ts, cash, equity, open_n,
-                    ticket, unreal_pnl)
+        logger.info(
+            "♥ %s | Cash $%.2f | Equity $%.2f | Open %d | "
+            "Ticket $%.2f | UnrealPnL $%.2f",
+            ts, cash, equity, open_n,
+            ticket, unreal_pnl
+        )
 
-        # ─── Optional: estimate next trade cost for first symbol ──────────
+        # ─── Estimates for all symbols ────────────────────────────────────
         for sym in SYMBOLS:
             price = fetch_price(sym)
-            stop  = price - atr(sym)*SL_ATR_MULT
+            stop  = price - atr(sym) * SL_ATR_MULT
             qty   = pos_size(price, stop, cash)
             cost  = qty * price
-            logger.info("↗ Est next %-6s: qty %.4f → cost $%.2f (risk $%.2f)",
-                        sym, qty, cost, ticket)
-
-        # ────────────────────────────────────────────────────────────────
+            logger.info(
+                "↗ Est next %-8s @ $%.2f: qty %.4f → total cost $%.2f (risk $%.2f)",
+                sym, price, qty, cost, ticket
+            )
+        # ─────────────────────────────────────────────────────────────────
 
         # book any fresh fills into CSV
         last_trade_id = append_new_trades(last_trade_id)
 
         for sym in SYMBOLS:
             price = fetch_price(sym)
-            pos = positions[sym]
+            pos   = positions[sym]
 
             # ENTRY logic
-            if pos is None and open_n < MAX_OPEN \
-               and price <= last_price[sym] * DIP_THRESHOLD \
-               and price > ema(sym):
+            if (
+                pos     is None
+                and open_n < MAX_OPEN
+                and price <= last_price[sym] * DIP_THRESHOLD
+                and price > ema(sym)
+            ):
                 a   = atr(sym)
                 slp = price - a * SL_ATR_MULT
                 tpp = price + a * TP_ATR_MULT
@@ -210,25 +227,34 @@ while True:
                 if qty >= minlot:
                     try:
                         exchange.create_market_buy_order(sym, qty)
-                        positions[sym] = {"entry": price, "amount": qty,
-                                          "sl": slp, "tp": tpp}
-                        logger.info("BUY ▶ %-6s %.6f @ %.4f "
-                                    "(TP %.4f  SL %.4f)",
-                                    sym, qty, price, tpp, slp)
+                        positions[sym] = {
+                            "entry":  price,
+                            "amount": qty,
+                            "sl":     slp,
+                            "tp":     tpp
+                        }
+                        logger.info(
+                            "BUY ▶ %-6s %.6f @ %.4f (TP %.4f  SL %.4f)",
+                            sym, qty, price, tpp, slp
+                        )
                     except Exception:
                         logger.exception("Buy failed %s", sym)
 
             # MANAGEMENT / EXIT
             elif pos:
                 if price > pos["entry"]:
-                    pos["sl"] = max(pos["sl"],
-                                    price * (1 - TRAIL_PCT / 100))
+                    pos["sl"] = max(
+                        pos["sl"],
+                        price * (1 - TRAIL_PCT/100)
+                    )
                 if price >= pos["tp"] or price <= pos["sl"]:
                     try:
                         tag = "TP" if price >= pos["tp"] else "SL"
                         exchange.create_market_sell_order(sym, pos["amount"])
-                        logger.info("SELL ◀ %-6s %.6f @ %.4f (%s)",
-                                    sym, pos["amount"], price, tag)
+                        logger.info(
+                            "SELL ◀ %-6s %.6f @ %.4f (%s)",
+                            sym, pos["amount"], price, tag
+                        )
                         positions[sym] = None
                     except Exception:
                         logger.exception("Sell failed %s", sym)
@@ -238,7 +264,7 @@ while True:
         time.sleep(POLL_INTERVAL)
 
     except KeyboardInterrupt:
-        still = {s:p for s,p in positions.items() if p}
+        still = {s: p for s,p in positions.items() if p}
         logger.warning("⏹ stopped – open positions: %s", still)
         break
     except Exception:
