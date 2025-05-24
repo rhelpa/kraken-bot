@@ -213,16 +213,24 @@ while True:
             pos   = positions[sym]
 
             # ENTRY logic
-            if (
-                pos     is None
-                and open_n < MAX_OPEN
-                and price <= last_price[sym] * DIP_THRESHOLD
-                and price > ema(sym)
-            ):
+            if pos is None and open_n < MAX_OPEN \
+            and price <= last_price[sym] * DIP_THRESHOLD \
+            and price > ema(sym):
+
+                # Calculate ATR-based stops and targets
                 a   = atr(sym)
                 slp = price - a * SL_ATR_MULT
                 tpp = price + a * TP_ATR_MULT
+
+                # Compute raw quantity based on risk
                 qty = pos_size(price, slp, cash)
+
+                # ── CAP BY AVAILABLE BUYING POWER ───────────────────────────
+                max_affordable = cash / price
+                qty = min(qty, max_affordable)
+                # ─────────────────────────────────────────────────────────────
+
+                # Check against exchange minimum lot
                 minlot = exchange.markets[sym]["limits"]["amount"]["min"] or 0
                 if qty >= minlot:
                     try:
