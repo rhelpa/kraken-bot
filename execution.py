@@ -2,7 +2,6 @@
 import logging
 import ccxt
 from exchange_client import exchange, fetch_price
-
 logger = logging.getLogger(__name__)
 
 def safe_limit_sell(symbol: str, qty: float) -> bool:

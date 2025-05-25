@@ -1,14 +1,28 @@
 # config.py
-import os
 from pathlib import Path
 from dotenv import load_dotenv
-import logging
-logger = logging.getLogger()   # root logger
+# point explicitly at your .env file (in the same dir as config.py)
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
+import os
 
-# Load environment
-load_dotenv()
+
+from constants import LOG_PATH, SYMBOLS, POLL_INTERVAL, RISK_FRAC
+
+print("ENV LOADED:", dict(
+    API_KEY=os.getenv("API_KEY"),
+    API_SECRET=os.getenv("API_SECRET"),
+    GIT_PAT = os.getenv("GIT_PAT")
+
+))
+
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
+GIT_PAT = os.getenv("GIT_PAT")
+
+
+if not API_KEY or not API_SECRET:
+    raise RuntimeError("❌ Missing API_KEY or API_SECRET in .env")
 
 # Strategy constants
 SYMBOLS       = [

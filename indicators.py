@@ -3,7 +3,7 @@ import math
 from exchange_client import exchange, fetch_price
 from config import EMA_PERIOD, ATR_PERIOD, RISK_FRAC
 import logging
-logger = logging.getLogger()   # root logger
+logger = logging.getLogger(__name__)
 
 
 def ema(symbol: str, n: int = EMA_PERIOD) -> float:
@@ -40,11 +40,14 @@ def pos_size(entry: float, stop: float, equity: float) -> float:
 depth_ema = {}
 
 def update_depth_ema(symbol: str, alpha: float = 0.2, levels: int = 5) -> float:
-    """Smooth book depth for top levels."""
     book = exchange.fetch_order_book(symbol)
-    bid = sum(vol for _, vol in book["bids"][:levels])
-    ask = sum(vol for _, vol in book["asks"][:levels])
-    total = bid + ask
+    bid_depth = sum(entry[1] for entry in book["bids"][:levels])
+    ask_depth = sum(entry[1] for entry in book["asks"][:levels])
+    total     = bid_depth + ask_depth
+
     prev = depth_ema.get(symbol, total)
     depth_ema[symbol] = alpha * total + (1 - alpha) * prev
+
+    # return the new EMA value, not dict.update()
     return depth_ema[symbol]
+

@@ -1,13 +1,10 @@
 # exchange_client.py
-import os
-from dotenv import load_dotenv
 import ccxt
 import logging
+from config import API_KEY, API_SECRET
+
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
 
 
 # Initialize CCXT exchange
@@ -21,16 +18,20 @@ exchange.load_markets()
 
 
 def fetch_price(symbol: str) -> float:
-    """Get last traded price for a symbol."""
-    ticker = exchange.fetch_ticker(symbol)
-    return float(ticker.get("last") or 0)
-
+    try:
+        ticker = exchange.fetch_ticker(symbol)
+        return float(ticker["last"])
+    except Exception as e:
+        logger.error(f"fetch_price({symbol}) failed: {e}")
+        raise
 
 def account_cash() -> float:
-    """Return USD free balance."""
-    bal = exchange.fetch_balance()
-    return float(bal.get("free", {}).get("USD", 0))
-
+    try:
+        balance = exchange.fetch_balance()
+        return float(balance["USD"]["free"])
+    except Exception as e:
+        logger.error(f"account_cash() failed: {e}")
+        raise
 
 def fetch_all_trades(symbol: str, max_pages: int = 20):
     """Retrieve full trade history via pagination."""

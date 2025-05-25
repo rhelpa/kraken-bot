@@ -4,7 +4,7 @@ from config import DIP_THRESHOLD, MAX_OPEN, TRAIL_PCT
 from exchange_client import fetch_price, exchange
 from indicators import ema, atr, pos_size, update_depth_ema
 import logging
-logger = logging.getLogger()   # root logger
+logger = logging.getLogger(__name__)
 
 def filter_tradeable(symbols, positions, last_price, cash):
     """Return list of symbols meeting dip, cash, volume & depth criteria."""

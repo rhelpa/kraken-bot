@@ -4,7 +4,8 @@ from config import TRADE_CSV, SYMBOLS, MIN_USD_EXPOS, TP_ATR_MULT, SL_ATR_MULT
 from exchange_client import exchange, fetch_price, open_position_from_history
 from indicators import atr
 import logging
-logger = logging.getLogger()   # root logger
+logger = logging.getLogger(__name__)
+
 
 def append_new_trades(last_id=None):
     """Append new trades to CSV and return latest trade id."""
