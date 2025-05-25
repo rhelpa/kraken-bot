@@ -113,6 +113,16 @@ def log_heartbeat(m: PortfolioMetrics):
         m.now, m.cash, m.equity, m.open_n, m.ticket, m.unreal
     )
 
+    metrics = PortfolioMetrics(
+        cash=cash,
+        equity=equity,
+        cost_basis=cost_basis,
+        unreal=unreal,
+        ticket=ticket,
+        open_n=open_n,
+        wallet_qty=wallet_qty,
+    )
+    return price_snapshot, metrics
 
 def log_dip_details(price_snapshot: Dict[str, Decimal]):
     start = time.time()

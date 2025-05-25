@@ -59,6 +59,7 @@ def _make_exchange():
 
 exchange = _make_exchange()
 exchange.load_markets()
+logger.info("Loaded %d markets", len(exchange.markets))
 
 
 
