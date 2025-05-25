@@ -1,4 +1,3 @@
-# strategy.py
 from __future__ import annotations
 
 import math
@@ -20,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 Side = Literal["buy", "sell"]
 
-
 class TradeAction(NamedTuple):
     side: Side
     symbol: str
@@ -34,7 +32,7 @@ class TradeAction(NamedTuple):
 def _round_qty(qty: Decimal, minlot: Decimal) -> Decimal:
     """Round *down* to the nearest valid lot size."""
     steps = (qty / minlot).quantize(0, ROUND_DOWN)
-    return (steps * minlot).quantize(minlot)  # preserve exchange precision
+    return (steps * minlot).quantize(minlot)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -70,6 +68,7 @@ def filter_tradeable(
         if reasons:
             logger.debug("%s filtered out (%s)", sym, ", ".join(reasons))
         else:
+            logger.debug("%s passed filters – price: %.2f, last: %.2f, min_notional: %.2f", sym, price, last_price[sym], min_notional)
             tradeable.append(sym)
 
     return tradeable
@@ -88,15 +87,16 @@ def generate_actions(
     actions: List[TradeAction] = []
     price = fetch_price(sym)
     if price is None:
+        logger.debug("%s skipped – no price available", sym)
         return actions
 
     pos = positions.get(sym)
 
     # ── ENTRY ────────────────────────────────────────────────────────────
     if pos is None and open_n < MAX_OPEN:
+        logger.debug("%s evaluating entry – price: %.2f, last: %.2f, ema: %.2f", sym, price, last_price[sym], ema(sym))
         if (
             price <= last_price[sym] * Decimal(str(DIP_THRESHOLD))
-            # optional EMA trend filter – **usually want price < EMA**
             and price < ema(sym)
         ):
             a = atr(sym)
@@ -110,20 +110,23 @@ def generate_actions(
             minlot = Decimal(exchange.markets[sym]["limits"]["amount"]["min"] or "1e-8")
             qty = _round_qty(qty, minlot)
 
+            logger.debug("%s ENTRY: raw_qty %.6f, max_qty %.6f, final_qty %.6f (minlot %.6f)", sym, raw_qty, max_qty, qty, minlot)
+
             if qty >= minlot:
                 actions.append(
                     TradeAction("buy", sym, qty, price, tag="entry", tp=tp, sl=sl)
                 )
+                logger.info("%s ENTRY placed @ %.2f | qty=%.6f | tp=%.2f | sl=%.2f", sym, price, qty, tp, sl)
             else:
                 logger.debug("%s qty %.8f < minlot", sym, qty)
 
     # ── EXIT ─────────────────────────────────────────────────────────────
     elif pos:
+        logger.debug("%s evaluating exit – price: %.2f | TP: %.2f | SL: %.2f", sym, price, pos["tp"], pos["sl"])
         peak = peak_cache.get(sym, pos["entry"])
         peak = max(peak, price)
         peak_cache[sym] = peak  # update in-place
 
-        # ratchet stop only if new high
         if peak != pos["entry"]:
             new_sl = peak * (1 - Decimal(str(TRAIL_PCT)) / 100)
             if new_sl > pos["sl"]:
@@ -132,7 +135,9 @@ def generate_actions(
 
         if price >= pos["tp"]:
             actions.append(TradeAction("sell", sym, pos["amount"], price, tag="TP"))
+            logger.info("%s TAKE-PROFIT hit @ %.2f", sym, price)
         elif price <= pos["sl"]:
             actions.append(TradeAction("sell", sym, pos["amount"], price, tag="SL"))
+            logger.info("%s STOP-LOSS hit @ %.2f", sym, price)
 
     return actions
