@@ -1,9 +1,11 @@
 # exchange_client.py
 import os
 from dotenv import load_dotenv
+from decimal import Decimal
 import ccxt
 import logging
 logger = logging.getLogger(__name__)
+
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
@@ -20,17 +22,16 @@ exchange = ccxt.kraken({
 exchange.load_markets()
 
 
-def fetch_price(symbol: str) -> float:
+def fetch_price(symbol: str) -> Decimal | None:
     """Get last traded price for a symbol."""
     ticker = exchange.fetch_ticker(symbol)
-    return float(ticker.get("last") or 0)
+    return Decimal(ticker.get("last") or 0)
 
 
-def account_cash() -> float:
-    """Return USD free balance."""
+def account_cash() -> Decimal:
     bal = exchange.fetch_balance()
-    return float(bal.get("free", {}).get("USD", 0))
-
+    free_usd = bal.get("USD", {}).get("free", 0)
+    return Decimal(str(free_usd))
 
 def fetch_all_trades(symbol: str, max_pages: int = 20):
     """Retrieve full trade history via pagination."""
@@ -67,3 +68,8 @@ def open_position_from_history(symbol: str):
         return 0, 0
     total_cost = sum(q * p for q, p in inventory)
     return total_qty, total_cost / total_qty
+
+def lot_step(sym: str) -> Decimal:
+    """Return the minimum tradable lot size for *sym* as Decimal."""
+    raw = exchange.markets[sym]["limits"]["amount"]["min"] or 0
+    return Decimal(str(raw))

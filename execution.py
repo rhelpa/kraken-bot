@@ -1,7 +1,8 @@
 # execution.py
-import logging
 import ccxt
+from decimal import Decimal
 from exchange_client import exchange, fetch_price
+import logging
 logger = logging.getLogger(__name__)
 
 def safe_limit_sell(symbol: str, qty: float) -> bool:
@@ -45,7 +46,7 @@ def place_mm_orders(symbol: str, stake_usd: float, spread_pct: float = 0.002):
     book = exchange.fetch_order_book(symbol)
     mid = (book["bids"][0][0] + book["asks"][0][0]) / 2
     size = stake_usd / mid
-    buy_p  = float(exchange.price_to_precision(symbol, mid * (1 - spread_pct/2)))
-    sell_p = float(exchange.price_to_precision(symbol, mid * (1 + spread_pct/2)))
+    buy_p  = Decimal(exchange.price_to_precision(symbol, mid * (1 - spread_pct/2)))
+    sell_p = Decimal(exchange.price_to_precision(symbol, mid * (1 + spread_pct/2)))
     exchange.create_limit_buy_order(symbol,  size, buy_p,  {"postOnly": True})
     exchange.create_limit_sell_order(symbol, size, sell_p, {"postOnly": True})
