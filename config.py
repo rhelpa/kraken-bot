@@ -6,24 +6,25 @@ from decimal import Decimal
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 import os
-
+MODE = os.getenv("MODE", "LIVE") 
 
 from constants import LOG_PATH, SYMBOLS, POLL_INTERVAL, RISK_FRAC
 
-print("ENV LOADED:", dict(
-    API_KEY=os.getenv("API_KEY"),
-    API_SECRET=os.getenv("API_SECRET"),
-    GIT_PAT = os.getenv("GIT_PAT")
-
-))
+#print("ENV LOADED:", dict(
+    #API_KEY=os.getenv("API_KEY"),
+    #API_SECRET=os.getenv("API_SECRET"),
+    #GIT_PAT = os.getenv("GIT_PAT")
+#))
 
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-GIT_PAT = os.getenv("GIT_PAT")
+KRAKEN_FUTURES_API = os.getenv("KRAKEN_FUTURES_API")
+KRAKEN_FUTURES_SECRET = os.getenv("KRAKEN_FUTURES_SECRET")
+#GIT_PAT = os.getenv("GIT_PAT")
 
 
-if not API_KEY or not API_SECRET:
-    raise RuntimeError("❌ Missing API_KEY or API_SECRET in .env")
+if not API_KEY or not API_SECRET or not KRAKEN_FUTURES_API or not KRAKEN_FUTURES_SECRET:
+    raise RuntimeError("❌ Missing keys in .env")
 
 # Strategy constants
 SYMBOLS       = [

@@ -45,6 +45,8 @@ def initialize_positions() -> dict[str, dict | None]:
         wallet_qty = Decimal(str(bal.get(base, {}).get("total", 0)))
 
         spot = fetch_price(sym) or 0
+        if spot is None:          # NEW
+            continue              # unsupported symbol → just ignore
         if spot == 0:
             logger.warning("%s: price=0 – market ignored", sym)
             positions[sym] = None
